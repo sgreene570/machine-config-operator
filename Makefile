@@ -37,6 +37,10 @@ test: test-unit test-e2e
 test-unit:
 	go test -v ./cmd/... ./pkg/... ./lib/...
 
+# Unit tests only (with code coverage)
+test-unit-coverage:
+	go test -v ./cmd/... ./pkg/... ./lib/... -coverprofile=test/coverage.out
+
 # Run the code generation tasks.
 # Example:
 #    make update

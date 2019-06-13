@@ -88,6 +88,14 @@ To execute all unit tests:
 
 `make test-unit`
 
+To execute all unit tests (with code coverage):
+
+`make test-unit-coverage`
+
+A code coverage report will be generated in `test/coverage.out`. To view this report, run:
+
+`go  tool cover -html=test/coverage.out`
+
 All tests (unit and e2e) can be executed with:
 
 `make test`
