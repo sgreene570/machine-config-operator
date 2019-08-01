@@ -159,3 +159,7 @@ required = [
 [[constraint]]
   name = "github.com/containers/image"
   version = "v2.0.0"
+
+[[constraint]]
+  name = "github.com/prometheus/client_golang"
+  version = "1.0.0"
