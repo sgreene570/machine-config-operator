@@ -7,3 +7,4 @@ metadata:
   labels:
     name: openshift-machine-config-operator
     openshift.io/run-level: "1"
+    openshift.io/cluster-monitoring: "true"
