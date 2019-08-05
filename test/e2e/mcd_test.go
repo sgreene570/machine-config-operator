@@ -39,7 +39,9 @@ func TestMCDToken(t *testing.T) {
 	require.Nil(t, err)
 
 	for _, pod := range mcdList.Items {
-		res, err := cs.Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{}).DoRaw()
+		res, err := cs.Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+			Container: "machine-config-daemon",
+		}).DoRaw()
 		require.Nil(t, err)
 		for _, line := range strings.Split(string(res), "\n") {
 			if strings.Contains(line, "Unable to rotate token") {
@@ -620,9 +622,9 @@ func TestCustomPool(t *testing.T) {
 	infraMCP.Spec.MachineConfigSelector = &mcSelector
 	infraMCP.Spec.MachineConfigSelector.MatchExpressions = []metav1.LabelSelectorRequirement{
 		metav1.LabelSelectorRequirement{
-			Key: "machineconfiguration.openshift.io/role",
+			Key:      "machineconfiguration.openshift.io/role",
 			Operator: metav1.LabelSelectorOpIn,
-			Values: []string{"worker", "infra"},
+			Values:   []string{"worker", "infra"},
 		},
 	}
 	_, err = cs.MachineConfigPools().Create(infraMCP)
