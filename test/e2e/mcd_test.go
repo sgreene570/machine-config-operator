@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/jsonmergepatch"
@@ -87,7 +88,8 @@ func createMCToAddFileForRole(name, role, filename, data, fs string) *mcfgv1.Mac
 	ignConfig := ctrlcommon.NewIgnConfig()
 	ignFile := createIgnFile(filename, "data:,"+data, fs, 420)
 	ignConfig.Storage.Files = append(ignConfig.Storage.Files, ignFile)
-	mcadd.Spec.Config = ignConfig
+	rawIgnConfig := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&ignConfig)
+	mcadd.Spec.Config.Raw = rawIgnConfig
 	return mcadd
 }
 
@@ -228,7 +230,8 @@ func TestUpdateSSH(t *testing.T) {
 	}
 	ignConfig := ctrlcommon.NewIgnConfig()
 	ignConfig.Passwd.Users = append(ignConfig.Passwd.Users, tempUser)
-	mcadd.Spec.Config = ignConfig
+	rawIgnConfig := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&ignConfig)
+	mcadd.Spec.Config.Raw = rawIgnConfig
 
 	_, err := cs.MachineConfigs().Create(mcadd)
 	require.Nil(t, err, "failed to create MC")
@@ -265,13 +268,17 @@ func TestUpdateSSH(t *testing.T) {
 func TestKernelArguments(t *testing.T) {
 	cs := framework.NewClientSet("")
 	bumpPoolMaxUnavailableTo(t, cs, 3)
+	ignCfg := ctrlcommon.NewIgnConfig()
+	rawIgnCfg := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&ignCfg)
 	kargsMC := &mcfgv1.MachineConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("kargs-%s", uuid.NewUUID()),
 			Labels: mcLabelForWorkers(),
 		},
 		Spec: mcfgv1.MachineConfigSpec{
-			Config:          ctrlcommon.NewIgnConfig(),
+			Config: runtime.RawExtension{
+				Raw: rawIgnCfg,
+			},
 			KernelArguments: []string{"nosmt", "foo=bar"},
 		},
 	}
@@ -320,7 +327,10 @@ func TestPoolDegradedOnFailToRender(t *testing.T) {
 	cs := framework.NewClientSet("")
 
 	mcadd := createMCToAddFile("add-a-file", "/etc/mytestconfs", "test", "")
-	mcadd.Spec.Config.Ignition.Version = "" // invalid, won't render
+	ignCfg := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(mcadd.Spec.Config.Raw)
+	ignCfg.Ignition.Version = "" // invalid, won't render
+	rawIgnCfg := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(ignCfg)
+	mcadd.Spec.Config.Raw = rawIgnCfg
 
 	// create the dummy MC now
 	_, err := cs.MachineConfigs().Create(mcadd)
@@ -366,7 +376,8 @@ func TestReconcileAfterBadMC(t *testing.T) {
 
 	// create a MC that contains a valid ignition config but is not reconcilable
 	mcadd := createMCToAddFile("add-a-file", "/etc/mytestconfs", "test", "root")
-	mcadd.Spec.Config.Networkd = igntypes.Networkd{
+	ignCfg := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(mcadd.Spec.Config.Raw)
+	ignCfg.Networkd = igntypes.Networkd{
 		Units: []igntypes.Networkdunit{
 			igntypes.Networkdunit{
 				Name:     "test.network",
@@ -374,6 +385,8 @@ func TestReconcileAfterBadMC(t *testing.T) {
 			},
 		},
 	}
+	rawIgnCfg := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(ignCfg)
+	mcadd.Spec.Config.Raw = rawIgnCfg
 
 	// grab the initial machineconfig used by the worker pool
 	// this MC is gonna be the one which is going to be reapplied once the bad MC is deleted
@@ -525,14 +538,18 @@ func TestDontDeleteRPMFiles(t *testing.T) {
 func TestFIPS(t *testing.T) {
 	cs := framework.NewClientSet("")
 	bumpPoolMaxUnavailableTo(t, cs, 3)
+	ignCfg := ctrlcommon.NewIgnConfig()
+	rawIgnCfg := mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&ignCfg)
 	fipsMC := &mcfgv1.MachineConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("fips-%s", uuid.NewUUID()),
 			Labels: mcLabelForWorkers(),
 		},
 		Spec: mcfgv1.MachineConfigSpec{
-			Config: ctrlcommon.NewIgnConfig(),
-			FIPS:   true,
+			Config: runtime.RawExtension{
+				Raw: rawIgnCfg,
+			},
+			FIPS: true,
 		},
 	}
 

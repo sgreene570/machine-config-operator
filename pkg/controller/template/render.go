@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/machine-config-operator/pkg/controller/common"
 	"github.com/openshift/machine-config-operator/pkg/version"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // RenderConfig is wrapper around ControllerConfigSpec.
@@ -260,7 +261,11 @@ func generateMachineConfigForName(config *RenderConfig, role, name, templateDir,
 		return nil, fmt.Errorf("error transpiling ct config to Ignition config: %v", err)
 	}
 
-	mcfg := MachineConfigFromIgnConfig(role, name, ignCfg)
+	rawIgnCfg, err := mcfgv1.EncodeIgnitionConfigSpecV2(ignCfg)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding Ignition config: %v", err)
+	}
+	mcfg := MachineConfigFromIgnConfig(role, name, rawIgnCfg)
 	// And inject the osimageurl here
 	mcfg.Spec.OSImageURL = config.OSImageURL
 
@@ -272,10 +277,11 @@ const (
 )
 
 // MachineConfigFromIgnConfig creates a MachineConfig with the provided Ignition config
-func MachineConfigFromIgnConfig(role, name string, ignCfg *igntypes.Config) *mcfgv1.MachineConfig {
+func MachineConfigFromIgnConfig(role, name string, rawIgnCfg []byte) *mcfgv1.MachineConfig {
 	labels := map[string]string{
 		machineConfigRoleLabelKey: role,
 	}
+
 	return &mcfgv1.MachineConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: labels,
@@ -283,7 +289,9 @@ func MachineConfigFromIgnConfig(role, name string, ignCfg *igntypes.Config) *mcf
 		},
 		Spec: mcfgv1.MachineConfigSpec{
 			OSImageURL: "",
-			Config:     *ignCfg,
+			Config: runtime.RawExtension{
+				Raw: rawIgnCfg,
+			},
 		},
 	}
 }

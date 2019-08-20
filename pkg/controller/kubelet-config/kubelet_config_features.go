@@ -18,6 +18,7 @@ import (
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
 	osev1 "github.com/openshift/api/config/v1"
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	ctrlcommon "github.com/openshift/machine-config-operator/pkg/controller/common"
 	mtmpl "github.com/openshift/machine-config-operator/pkg/controller/template"
 	"github.com/openshift/machine-config-operator/pkg/version"
@@ -93,7 +94,11 @@ func (ctrl *Controller) syncFeatureHandler(key string) error {
 		isNotFound := errors.IsNotFound(err)
 		if isNotFound {
 			ignConfig := ctrlcommon.NewIgnConfig()
-			mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, &ignConfig)
+			rawIgnConfig, err := mcfgv1.EncodeIgnitionConfigSpecV2(&ignConfig)
+			if err != nil {
+				return err
+			}
+			mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, rawIgnConfig)
 		}
 		// Generate the original KubeletConfig
 		originalKubeletIgn, err := ctrl.generateOriginalKubeletConfig(role)
@@ -122,7 +127,12 @@ func (ctrl *Controller) syncFeatureHandler(key string) error {
 		if err != nil {
 			return err
 		}
-		mc.Spec.Config = createNewKubeletIgnition(cfgJSON)
+		cfgIgn := createNewKubeletIgnition(cfgJSON)
+		rawCfgIgn, err := mcfgv1.EncodeIgnitionConfigSpecV2(&cfgIgn)
+		if err != nil {
+			return err
+		}
+		mc.Spec.Config.Raw = rawCfgIgn
 		mc.ObjectMeta.Annotations = map[string]string{
 			ctrlcommon.GeneratedByControllerVersionAnnotationKey: version.Hash,
 		}

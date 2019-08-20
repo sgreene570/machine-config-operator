@@ -526,7 +526,11 @@ func (ctrl *Controller) syncGeneratedMachineConfig(pool *mcfgv1.MachineConfigPoo
 func generateRenderedMachineConfig(pool *mcfgv1.MachineConfigPool, configs []*mcfgv1.MachineConfig, cconfig *mcfgv1.ControllerConfig) (*mcfgv1.MachineConfig, error) {
 	// Before merging all MCs for a specific pool, let's make sure each contains a valid Ignition Config
 	for _, config := range configs {
-		if err := ctrlcommon.ValidateIgnition(config.Spec.Config); err != nil {
+		decodedIgn, err := mcfgv1.DecodeIgnitionConfigSpecV2(config.Spec.Config.Raw)
+		if err != nil {
+			return nil, err
+		}
+		if err := ctrlcommon.ValidateIgnition(*decodedIgn); err != nil {
 			return nil, err
 		}
 	}

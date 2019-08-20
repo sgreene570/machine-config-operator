@@ -547,12 +547,22 @@ func (ctrl *Controller) syncContainerRuntimeConfig(key string) error {
 			}
 			if isNotFound {
 				tempIgnCfg := ctrlcommon.NewIgnConfig()
-				mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, &tempIgnCfg)
+				rawTempIgnCfg, err := mcfgv1.EncodeIgnitionConfigSpecV2(&tempIgnCfg)
+				if err != nil {
+					glog.V(2).Infoln(cfg, err, "error encoding Ignition config: %v", err)
+				}
+				mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, rawTempIgnCfg)
 			}
-			mc.Spec.Config = createNewIgnition(map[string][]byte{
+
+			internalCtrRuntimeConfigIgn = createNewIgnition(map[string][]byte{
 				storageConfigPath: storageTOML,
 				crioConfigPath:    crioTOML,
 			})
+			rawCtrRuntimeConfigIgn, err := mcfgv1.EncodeIgnitionConfigSpecV2(&internalCtrRuntimeConfigIgn)
+			if err != nil {
+				glog.V(2).Infoln(internalCtrRuntimeConfigIgn, err, "error encoding container runtime config Ignition: %v", err)
+			}
+			mc.Spec.Config.Raw = rawCtrRuntimeConfigIgn
 
 			mc.SetAnnotations(map[string]string{
 				ctrlcommon.GeneratedByControllerVersionAnnotationKey: version.Hash,
@@ -673,7 +683,11 @@ func (ctrl *Controller) syncImageConfig(key string) error {
 				return fmt.Errorf("could not find MachineConfig: %v", err)
 			}
 			isNotFound := errors.IsNotFound(err)
-			if !isNotFound && equality.Semantic.DeepEqual(registriesIgn, mc.Spec.Config) {
+			rawRegistriesIgn, err := mcfgv1.EncodeIgnitionConfigSpecV2(registriesIgn)
+			if err != nil {
+				return fmt.Errorf("could not encode registries Ignition config: %v", err)
+			}
+			if !isNotFound && equality.Semantic.DeepEqual(rawRegistriesIgn, mc.Spec.Config) {
 				// if the configuration for the registries is equal, we still need to compare
 				// the generated controller version because during an upgrade we need a new one
 				mcCtrlVersion := mc.Annotations[ctrlcommon.GeneratedByControllerVersionAnnotationKey]
@@ -684,9 +698,13 @@ func (ctrl *Controller) syncImageConfig(key string) error {
 			}
 			if isNotFound {
 				tempIgnCfg := ctrlcommon.NewIgnConfig()
-				mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, &tempIgnCfg)
+				rawTempIgnCfg, err := mcfgv1.EncodeIgnitionConfigSpecV2(&tempIgnCfg)
+				if err != nil {
+					return fmt.Errorf("could not encode registries Ignition config: %v", err)
+				}
+				mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, rawTempIgnCfg)
 			}
-			mc.Spec.Config = *registriesIgn
+			mc.Spec.Config.Raw = rawRegistriesIgn
 			mc.ObjectMeta.Annotations = map[string]string{
 				ctrlcommon.GeneratedByControllerVersionAnnotationKey: version.Hash,
 			}
@@ -776,10 +794,18 @@ func RunImageBootstrap(templateDir string, controllerConfig *v1.ControllerConfig
 		if err != nil {
 			return nil, err
 		}
+		rawRegistriesIgn, err := mcfgv1.EncodeIgnitionConfigSpecV2(registriesIgn)
+		if err != nil {
+			return nil, err
+		}
 
 		tempIgnCfg := ctrlcommon.NewIgnConfig()
-		mc := mtmpl.MachineConfigFromIgnConfig(role, managedKey, &tempIgnCfg)
-		mc.Spec.Config = *registriesIgn
+		rawTempIgnCfg, err := mcfgv1.EncodeIgnitionConfigSpecV2(&tempIgnCfg)
+		if err != nil {
+			return nil, err
+		}
+		mc := mtmpl.MachineConfigFromIgnConfig(role, managedKey, rawTempIgnCfg)
+		mc.Spec.Config.Raw = rawRegistriesIgn
 		// Explicitly do NOT set GeneratedByControllerVersionAnnotationKey so that the first run of the non-bootstrap controller
 		// always rebuilds registries.conf (with the insecureRegs/blockedRegs values actually available).
 		mc.ObjectMeta.OwnerReferences = []metav1.OwnerReference{

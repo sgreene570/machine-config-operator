@@ -49,7 +49,11 @@ func createNewDefaultFeatureGate() *osev1.FeatureGate {
 }
 
 func findKubeletConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
-	for _, c := range mc.Spec.Config.Storage.Files {
+	ignCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode Kubelet Config")
+	}
+	for _, c := range ignCfg.Storage.Files {
 		if c.Path == "/etc/kubernetes/kubelet.conf" {
 			return &c, nil
 		}

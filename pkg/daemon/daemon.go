@@ -1164,10 +1164,14 @@ func (dn *Daemon) validateOnDiskState(currentConfig *mcfgv1.MachineConfig) bool 
 		return false
 	}
 	// And the rest of the disk state
-	if !checkFiles(currentConfig.Spec.Config.Storage.Files) {
+	ignCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(currentConfig.Spec.Config.Raw)
+	if err != nil {
 		return false
 	}
-	if !checkUnits(currentConfig.Spec.Config.Systemd.Units) {
+	if !checkFiles(ignCfg.Storage.Files) {
+		return false
+	}
+	if !checkUnits(ignCfg.Systemd.Units) {
 		return false
 	}
 	return true

@@ -17,6 +17,7 @@ import (
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	"github.com/openshift/machine-config-operator/lib/resourceread"
+	mcfgv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
 
 func TestParseManifests(t *testing.T) {
@@ -150,8 +151,9 @@ func TestBootstrapRun(t *testing.T) {
 
 			// Ensure that generated registries.conf corresponds to the testdata ImageContentSourcePolicy
 			var registriesConfig *igntypes.File
-			for i := range mc.Spec.Config.Storage.Files {
-				f := &mc.Spec.Config.Storage.Files[i]
+			ignCfg := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(mc.Spec.Config.Raw)
+			for i := range ignCfg.Storage.Files {
+				f := &ignCfg.Storage.Files[i]
 				if f.Path == "/etc/containers/registries.conf" {
 					registriesConfig = f
 				}

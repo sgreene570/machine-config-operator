@@ -1,13 +1,63 @@
 package v1
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 
 	ign "github.com/coreos/ignition/config/v2_2"
+	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/yaml"
 )
+
+// DecodeIgnitionConfigSpecV2 decodes byte slices to Ignition Config Spec v2 or errors out
+func DecodeIgnitionConfigSpecV2(data []byte) (*igntypes.Config, error) {
+	config := &igntypes.Config{}
+	d := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), len(data))
+	if err := d.Decode(config); err != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
+// DecodeIgnitionConfigSpecV2OrDie decodes byte slices to Ignition Config Spec v2 or panics
+func DecodeIgnitionConfigSpecV2OrDie(data []byte) *igntypes.Config {
+	config, err := DecodeIgnitionConfigSpecV2(data)
+	if err != nil {
+		panic(err)
+	}
+
+	return config
+}
+
+// EncodeIgnitionConfigSpecV2 encodes Ignition Config Spec v2 to byte slices or errors out
+func EncodeIgnitionConfigSpecV2(cfg *igntypes.Config) ([]byte, error) {
+	if cfg == nil {
+		return []byte{}, nil
+	}
+
+	var rawBytes []byte
+	var err error
+	if rawBytes, err = json.Marshal(cfg); err != nil {
+		return nil, fmt.Errorf("error marshalling Ignition Config: %v", err)
+	}
+
+	return rawBytes, nil
+}
+
+// EncodeIgnitionConfigSpecV2OrDie encodes Ignition Config Spec v2 to byte slices or panics
+func EncodeIgnitionConfigSpecV2OrDie(cfg *igntypes.Config) []byte {
+	rawBytes, err := EncodeIgnitionConfigSpecV2(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	return rawBytes
+}
 
 // MergeMachineConfigs combines multiple machineconfig objects into one object.
 // It sorts all the configs in increasing order of their name.
@@ -21,13 +71,28 @@ func MergeMachineConfigs(configs []*MachineConfig, osImageURL string) *MachineCo
 	sort.Slice(configs, func(i, j int) bool { return configs[i].Name < configs[j].Name })
 
 	var fips bool
-	outIgn := configs[0].Spec.Config
+
+	internalIgnPtr, err := DecodeIgnitionConfigSpecV2(configs[0].Spec.Config.Raw)
+	if err != nil {
+		panic(err)
+	}
+	internalIgn := *internalIgnPtr
+
 	for idx := 1; idx < len(configs); idx++ {
 		// if any of the config has FIPS enabled, it'll be set
 		if configs[idx].Spec.FIPS {
 			fips = true
 		}
-		outIgn = ign.Append(outIgn, configs[idx].Spec.Config)
+		updateIgnPtr, err := DecodeIgnitionConfigSpecV2(configs[idx].Spec.Config.Raw)
+		if err != nil {
+			panic(err)
+		}
+		updateIgn := *updateIgnPtr
+		internalIgn = ign.Append(internalIgn, updateIgn)
+	}
+	outIgnRaw, err := EncodeIgnitionConfigSpecV2(&internalIgn)
+	if err != nil {
+		panic(err)
 	}
 	kargs := []string{}
 	for _, cfg := range configs {
@@ -38,8 +103,10 @@ func MergeMachineConfigs(configs []*MachineConfig, osImageURL string) *MachineCo
 		Spec: MachineConfigSpec{
 			OSImageURL:      osImageURL,
 			KernelArguments: kargs,
-			Config:          outIgn,
-			FIPS:            fips,
+			Config: runtime.RawExtension{
+				Raw: outIgnRaw,
+			},
+			FIPS: fips,
 		},
 	}
 }

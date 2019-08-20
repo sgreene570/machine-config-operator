@@ -464,10 +464,18 @@ func (ctrl *Controller) syncKubeletConfig(key string) error {
 		}
 		if isNotFound {
 			ignConfig := ctrlcommon.NewIgnConfig()
-			mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, &ignConfig)
+			rawIgnConfig, err := mcfgv1.EncodeIgnitionConfigSpecV2(&ignConfig)
+			if err != nil {
+				return ctrl.syncStatusOnly(cfg, err, "could not encode new kubelet config Ignition : %v", err)
+			}
+			mc = mtmpl.MachineConfigFromIgnConfig(role, managedKey, rawIgnConfig)
 		}
-		mc.Spec.Config = createNewKubeletIgnition(cfgJSON)
-
+		cfgIgn := createNewKubeletIgnition(cfgJSON)
+		rawIgn, err := mcfgv1.EncodeIgnitionConfigSpecV2(&cfgIgn)
+		if err != nil {
+			return ctrl.syncStatusOnly(cfg, err, "could not encode kubelet config Ignition: %v", err)
+		}
+		mc.Spec.Config.Raw = rawIgn
 		mc.SetAnnotations(map[string]string{
 			ctrlcommon.GeneratedByControllerVersionAnnotationKey: version.Hash,
 		})

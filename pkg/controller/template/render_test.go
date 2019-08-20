@@ -298,7 +298,7 @@ func TestGenerateMachineConfigs(t *testing.T) {
 				t.Fatal("role label missing")
 			}
 
-			ign := cfg.Spec.Config
+			ign := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(cfg.Spec.Config.Raw)
 			if role == "master" {
 				if !foundPullSecretMaster {
 					foundPullSecretMaster = findIgnFile(ign.Storage.Files, "/var/lib/kubelet/config.json", t)

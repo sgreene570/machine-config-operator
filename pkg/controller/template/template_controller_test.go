@@ -371,7 +371,8 @@ func TestUpdateMachineConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	//update machineconfig
-	mcs[len(mcs)-1].Spec.Config = ctrlcommon.NewIgnConfig()
+	newIgnCfg := ctrlcommon.NewIgnConfig()
+	mcs[len(mcs)-1].Spec.Config.Raw = mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&newIgnCfg)
 
 	f.ccLister = append(f.ccLister, cc)
 	f.kubeobjects = append(f.kubeobjects, ps)

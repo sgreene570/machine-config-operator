@@ -93,7 +93,11 @@ func createNewIgnition(configs map[string][]byte) igntypes.Config {
 }
 
 func findStorageConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
-	for _, c := range mc.Spec.Config.Storage.Files {
+	ignCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode Storage Config")
+	}
+	for _, c := range ignCfg.Storage.Files {
 		if c.Path == storageConfigPath {
 			c := c
 			return &c, nil
@@ -103,7 +107,11 @@ func findStorageConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
 }
 
 func findCRIOConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
-	for _, c := range mc.Spec.Config.Storage.Files {
+	ignCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode CRI-O Config")
+	}
+	for _, c := range ignCfg.Storage.Files {
 		if c.Path == crioConfigPath {
 			c := c
 			return &c, nil
@@ -113,7 +121,11 @@ func findCRIOConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
 }
 
 func findRegistriesConfig(mc *mcfgv1.MachineConfig) (*igntypes.File, error) {
-	for _, c := range mc.Spec.Config.Storage.Files {
+	ignCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode Registries Config")
+	}
+	for _, c := range ignCfg.Storage.Files {
 		if c.Path == registriesConfigPath {
 			return &c, nil
 		}

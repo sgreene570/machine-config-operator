@@ -350,15 +350,17 @@ func verifyRegistriesConfigAndPolicyJSONContents(t *testing.T, mc *mcfgv1.Machin
 		imgcfg.Spec.RegistrySources.BlockedRegistries, icsps)
 	require.NoError(t, err)
 	assert.Equal(t, mcName, mc.ObjectMeta.Name)
+
+	ignCfg := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(mc.Spec.Config.Raw)
 	if verifyPolicyJSON {
 		// If there is a change to the policy.json file then there will be 2 files
-		require.Len(t, mc.Spec.Config.Storage.Files, 2)
+		require.Len(t, ignCfg.Storage.Files, 2)
 	} else {
-		require.Len(t, mc.Spec.Config.Storage.Files, 1)
+		require.Len(t, ignCfg.Storage.Files, 1)
 	}
-	regfile := mc.Spec.Config.Storage.Files[0]
+	regfile := ignCfg.Storage.Files[0]
 	if regfile.Node.Path != registriesConfigPath {
-		regfile = mc.Spec.Config.Storage.Files[1]
+		regfile = ignCfg.Storage.Files[1]
 	}
 	assert.Equal(t, registriesConfigPath, regfile.Node.Path)
 	registriesConf, err := dataurl.DecodeString(regfile.Contents.Source)
@@ -371,9 +373,9 @@ func verifyRegistriesConfigAndPolicyJSONContents(t *testing.T, mc *mcfgv1.Machin
 			imgcfg.Spec.RegistrySources.BlockedRegistries,
 			imgcfg.Spec.RegistrySources.AllowedRegistries)
 		require.NoError(t, err)
-		policyfile := mc.Spec.Config.Storage.Files[1]
+		policyfile := ignCfg.Storage.Files[1]
 		if policyfile.Node.Path != policyConfigPath {
-			policyfile = mc.Spec.Config.Storage.Files[0]
+			policyfile = ignCfg.Storage.Files[0]
 		}
 		assert.Equal(t, policyConfigPath, policyfile.Node.Path)
 		policyJSON, err := dataurl.DecodeString(policyfile.Contents.Source)

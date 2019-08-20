@@ -256,13 +256,22 @@ func (dn *Daemon) update(oldConfig, newConfig *mcfgv1.MachineConfig) (retErr err
 		}
 	}()
 
-	if err := dn.updateSSHKeys(newConfig.Spec.Config.Passwd.Users); err != nil {
+	oldIgnCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(oldConfig.Spec.Config.Raw)
+	if err != nil {
+		return err
+	}
+	newIgnCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(newConfig.Spec.Config.Raw)
+	if err != nil {
+		return err
+	}
+
+	if err := dn.updateSSHKeys(newIgnCfg.Passwd.Users); err != nil {
 		return err
 	}
 
 	defer func() {
 		if retErr != nil {
-			if err := dn.updateSSHKeys(oldConfig.Spec.Config.Passwd.Users); err != nil {
+			if err := dn.updateSSHKeys(oldIgnCfg.Passwd.Users); err != nil {
 				retErr = errors.Wrapf(retErr, "error rolling back SSH keys updates %v", err)
 				return
 			}
@@ -379,12 +388,18 @@ func (d *MachineConfigDiff) IsEmpty() bool {
 // directories, links, and systemd units sections of the included ignition
 // config currently.
 func Reconcilable(oldConfig, newConfig *mcfgv1.MachineConfig) (*MachineConfigDiff, error) {
-	oldIgn := oldConfig.Spec.Config
-	newIgn := newConfig.Spec.Config
+	oldIgn, err := mcfgv1.DecodeIgnitionConfigSpecV2(oldConfig.Spec.Config.Raw)
+	if err != nil {
+		return nil, err
+	}
+	newIgn, err := mcfgv1.DecodeIgnitionConfigSpecV2(newConfig.Spec.Config.Raw)
+	if err != nil {
+		return nil, err
+	}
 
 	// Ignition section
 	// First check if this is a generally valid Ignition Config
-	if err := ctrlcommon.ValidateIgnition(newIgn); err != nil {
+	if err := ctrlcommon.ValidateIgnition(*newIgn); err != nil {
 		return nil, err
 	}
 
@@ -561,14 +576,21 @@ func (dn *Daemon) updateKernelArguments(oldConfig, newConfig *mcfgv1.MachineConf
 // touched.
 func (dn *Daemon) updateFiles(oldConfig, newConfig *mcfgv1.MachineConfig) error {
 	glog.Info("Updating files")
-
-	if err := dn.writeFiles(newConfig.Spec.Config.Storage.Files); err != nil {
+	oldIgnCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(oldConfig.Spec.Config.Raw)
+	if err != nil {
 		return err
 	}
-	if err := dn.writeUnits(newConfig.Spec.Config.Systemd.Units); err != nil {
+	newIgnCfg, err := mcfgv1.DecodeIgnitionConfigSpecV2(newConfig.Spec.Config.Raw)
+	if err != nil {
 		return err
 	}
-	if err := dn.deleteStaleData(oldConfig, newConfig); err != nil {
+	if err := dn.writeFiles(newIgnCfg.Storage.Files); err != nil {
+		return err
+	}
+	if err := dn.writeUnits(newIgnCfg.Systemd.Units); err != nil {
+		return err
+	}
+	if err := dn.deleteStaleData(oldIgnCfg, newIgnCfg); err != nil {
 		return err
 	}
 	return nil
@@ -578,14 +600,15 @@ func (dn *Daemon) updateFiles(oldConfig, newConfig *mcfgv1.MachineConfig) error 
 // all the files, units that are present in the old config but not in the new one.
 // this function will error out if it fails to delete a file (with the exception
 // of simply warning if the error is ENOENT since that's the desired state).
-func (dn *Daemon) deleteStaleData(oldConfig, newConfig *mcfgv1.MachineConfig) error {
+func (dn *Daemon) deleteStaleData(oldConfig, newConfig *igntypes.Config) error {
 	glog.Info("Deleting stale data")
 	newFileSet := make(map[string]struct{})
-	for _, f := range newConfig.Spec.Config.Storage.Files {
+
+	for _, f := range newConfig.Storage.Files {
 		newFileSet[f.Path] = struct{}{}
 	}
 
-	for _, f := range oldConfig.Spec.Config.Storage.Files {
+	for _, f := range oldConfig.Storage.Files {
 		if _, ok := newFileSet[f.Path]; !ok {
 			if _, err := os.Stat(origFileName(f.Path)); err == nil {
 				if err := os.Rename(origFileName(f.Path), f.Path); err != nil {
@@ -609,7 +632,7 @@ func (dn *Daemon) deleteStaleData(oldConfig, newConfig *mcfgv1.MachineConfig) er
 
 	newUnitSet := make(map[string]struct{})
 	newDropinSet := make(map[string]struct{})
-	for _, u := range newConfig.Spec.Config.Systemd.Units {
+	for _, u := range newConfig.Systemd.Units {
 		for j := range u.Dropins {
 			path := filepath.Join(pathSystemd, u.Name+".d", u.Dropins[j].Name)
 			newDropinSet[path] = struct{}{}
@@ -618,7 +641,7 @@ func (dn *Daemon) deleteStaleData(oldConfig, newConfig *mcfgv1.MachineConfig) er
 		newUnitSet[path] = struct{}{}
 	}
 
-	for _, u := range oldConfig.Spec.Config.Systemd.Units {
+	for _, u := range oldConfig.Systemd.Units {
 		for j := range u.Dropins {
 			path := filepath.Join(pathSystemd, u.Name+".d", u.Dropins[j].Name)
 			if _, ok := newDropinSet[path]; !ok {

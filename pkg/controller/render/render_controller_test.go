@@ -285,12 +285,15 @@ func TestIgnValidationGenerateRenderedMachineConfig(t *testing.T) {
 
 	// verify that an invalid igntion config (here a config with content and an empty version,
 	// will fail validation
-	mcs[1].Spec.Config.Ignition.Version = ""
+	ignCfg := mcfgv1.DecodeIgnitionConfigSpecV2OrDie(mcs[1].Spec.Config.Raw)
+	ignCfg.Ignition.Version = ""
+	mcs[1].Spec.Config.Raw = mcfgv1.EncodeIgnitionConfigSpecV2OrDie(ignCfg)
+
 	_, err = generateRenderedMachineConfig(mcp, mcs, cc)
 	require.NotNil(t, err)
 
 	// verify that a machine config with no ignition content will not fail validation
-	mcs[1].Spec.Config = igntypes.Config{}
+	mcs[1].Spec.Config.Raw = mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&igntypes.Config{})
 	mcs[1].Spec.KernelArguments = append(mcs[1].Spec.KernelArguments, "test1")
 	_, err = generateRenderedMachineConfig(mcp, mcs, cc)
 	require.Nil(t, err)

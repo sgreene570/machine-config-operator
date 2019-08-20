@@ -12,6 +12,7 @@ import (
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
 	yaml "github.com/ghodss/yaml"
 	"github.com/stretchr/testify/assert"
+
 	v1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	daemonconsts "github.com/openshift/machine-config-operator/pkg/daemon/constants"
 	"github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned/fake"
@@ -56,13 +57,29 @@ func TestMachineConfigToIgnition(t *testing.T) {
 	mc := new(v1.MachineConfig)
 	err = yaml.Unmarshal([]byte(mcData), mc)
 	assert.Nil(t, err)
-	assert.Equal(t, 1, len(mc.Spec.Config.Storage.Files))
-	assert.Equal(t, mc.Spec.Config.Storage.Files[0].Path, "/etc/coreos/update.conf")
+	mcIgn, err := v1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		t.Errorf("decoding failed: %s", err)
+	}
+	assert.Equal(t, 1, len(mcIgn.Storage.Files))
+	assert.Equal(t, mcIgn.Storage.Files[0].Path, "/etc/coreos/update.conf")
 
 	origMc := mc.DeepCopy()
-	ign := machineConfigToIgnition(mc)
-	assert.Equal(t, 1, len(origMc.Spec.Config.Storage.Files))
-	assert.Equal(t, 2, len(mc.Spec.Config.Storage.Files))
+	origIgnCfg, err := v1.DecodeIgnitionConfigSpecV2(origMc.Spec.Config.Raw)
+	if err != nil {
+		t.Errorf("decoding failed: %s", err)
+	}
+	rawIgn := machineConfigToIgnition(mc)
+	ign, err := v1.DecodeIgnitionConfigSpecV2(rawIgn.Raw)
+	if err != nil {
+		t.Errorf("decoding failed: %s", err)
+	}
+	mcIgn, err = v1.DecodeIgnitionConfigSpecV2(mc.Spec.Config.Raw)
+	if err != nil {
+		t.Errorf("decoding failed: %s", err)
+	}
+	assert.Equal(t, 1, len(origIgnCfg.Storage.Files))
+	assert.Equal(t, 2, len(mcIgn.Storage.Files))
 	assert.Equal(t, 2, len(ign.Storage.Files))
 	assert.Equal(t, ign.Storage.Files[0].Path, "/etc/coreos/update.conf")
 	assert.Equal(t, ign.Storage.Files[1].Path, daemonconsts.MachineConfigEncapsulatedPath)
@@ -127,8 +144,10 @@ func TestBootstrapServer(t *testing.T) {
 	}
 
 	// assert on the output.
-	validateIgnitionFiles(t, mc.Spec.Config.Storage.Files, res.Storage.Files)
-	validateIgnitionSystemd(t, mc.Spec.Config.Systemd.Units, res.Systemd.Units)
+	ignCfg := v1.DecodeIgnitionConfigSpecV2OrDie(mc.Spec.Config.Raw)
+	resCfg := v1.DecodeIgnitionConfigSpecV2OrDie(res.Raw)
+	validateIgnitionFiles(t, ignCfg.Storage.Files, resCfg.Storage.Files)
+	validateIgnitionSystemd(t, ignCfg.Systemd.Units, resCfg.Systemd.Units)
 }
 
 // TestClusterServer tests the behavior of the machine config server
@@ -201,11 +220,13 @@ func TestClusterServer(t *testing.T) {
 		t.Fatalf("expected err to be nil, received: %v", err)
 	}
 
-	validateIgnitionFiles(t, mc.Spec.Config.Storage.Files, res.Storage.Files)
-	validateIgnitionSystemd(t, mc.Spec.Config.Systemd.Units, res.Systemd.Units)
+	ignCfg := v1.DecodeIgnitionConfigSpecV2OrDie(mc.Spec.Config.Raw)
+	resCfg := v1.DecodeIgnitionConfigSpecV2OrDie(res.Raw)
+	validateIgnitionFiles(t, ignCfg.Storage.Files, resCfg.Storage.Files)
+	validateIgnitionSystemd(t, ignCfg.Systemd.Units, resCfg.Systemd.Units)
 
 	foundEncapsulated := false
-	for _, f := range res.Storage.Files {
+	for _, f := range resCfg.Storage.Files {
 		if f.Path != daemonconsts.MachineConfigEncapsulatedPath {
 			continue
 		}
