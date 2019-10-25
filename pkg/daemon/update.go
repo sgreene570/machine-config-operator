@@ -26,6 +26,7 @@ import (
 	"github.com/vincent-petithory/dataurl"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -171,10 +172,13 @@ func canonicalizeEmptyMC(config *mcfgv1.MachineConfig) *mcfgv1.MachineConfig {
 	if config != nil {
 		return config
 	}
+	newConfig := ctrlcommon.NewIgnConfig()
 	return &mcfgv1.MachineConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: "mco-empty-mc"},
 		Spec: mcfgv1.MachineConfigSpec{
-			Config: ctrlcommon.NewIgnConfig(),
+			Config: runtime.RawExtension{
+				Raw: mcfgv1.EncodeIgnitionConfigSpecV2OrDie(&newConfig),
+			},
 		},
 	}
 }
@@ -184,7 +188,11 @@ func (dn *Daemon) compareMachineConfig(oldConfig, newConfig *mcfgv1.MachineConfi
 	oldConfig = canonicalizeEmptyMC(oldConfig)
 	oldConfigName := oldConfig.GetName()
 	newConfigName := newConfig.GetName()
-	diff = NewMachineConfigDiff(oldConfig, newConfig)
+	diff, err := NewMachineConfigDiff(oldConfig, newConfig)
+	if err != nil {
+		glog.Infof("Error forming MachineConfig diff")
+		return false
+	}
 	if diff.IsEmpty() {
 		glog.Infof("No changes from %s to %s", oldConfigName, newConfigName)
 		return false
@@ -351,9 +359,15 @@ type MachineConfigDiff struct {
 }
 
 // NewMachineConfigDiff compares two MachineConfig objects.
-func NewMachineConfigDiff(oldConfig, newConfig *mcfgv1.MachineConfig) *MachineConfigDiff {
-	oldIgn := oldConfig.Spec.Config
-	newIgn := newConfig.Spec.Config
+func NewMachineConfigDiff(oldConfig, newConfig *mcfgv1.MachineConfig) (*MachineConfigDiff, error) {
+	oldIgn, err := mcfgv1.DecodeIgnitionConfigSpecV2(oldConfig.Spec.Config.Raw)
+	if err != nil {
+		return nil, err
+	}
+	newIgn, err := mcfgv1.DecodeIgnitionConfigSpecV2(newConfig.Spec.Config.Raw)
+	if err != nil {
+		return nil, err
+	}
 
 	// Both nil and empty slices are of zero length,
 	// consider them as equal while comparing KernelArguments in both MachineConfigs
@@ -366,7 +380,7 @@ func NewMachineConfigDiff(oldConfig, newConfig *mcfgv1.MachineConfig) *MachineCo
 		passwd:   !reflect.DeepEqual(oldIgn.Passwd, newIgn.Passwd),
 		files:    !reflect.DeepEqual(oldIgn.Storage.Files, newIgn.Storage.Files),
 		units:    !reflect.DeepEqual(oldIgn.Systemd.Units, newIgn.Systemd.Units),
-	}
+	}, nil
 }
 
 // IsEmpty returns true if the MachineConfigDiff has no changes, or
@@ -490,7 +504,7 @@ func Reconcilable(oldConfig, newConfig *mcfgv1.MachineConfig) (*MachineConfigDif
 
 	// we made it through all the checks. reconcile away!
 	glog.V(2).Info("Configs are reconcilable")
-	return NewMachineConfigDiff(oldConfig, newConfig), nil
+	return NewMachineConfigDiff(oldConfig, newConfig)
 }
 
 // verifyUserFields returns nil if the user Name = "core", if 1 or more SSHKeys exist for

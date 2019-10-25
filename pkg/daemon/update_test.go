@@ -276,11 +276,11 @@ func TestMachineConfigDiff(t *testing.T) {
 			Config: ctrlcommon.NewIgnConfig(),
 		},
 	}
-	diff := NewMachineConfigDiff(oldConfig, newConfig)
+	diff, err := NewMachineConfigDiff(oldConfig, newConfig)
 	assert.True(t, diff.IsEmpty())
 
 	newConfig.Spec.OSImageURL = "quay.io/example/foo@sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c"
-	diff = NewMachineConfigDiff(oldConfig, newConfig)
+	diff, err := NewMachineConfigDiff(oldConfig, newConfig)
 	assert.False(t, diff.IsEmpty())
 	assert.True(t, diff.osUpdate)
 
@@ -288,7 +288,7 @@ func TestMachineConfigDiff(t *testing.T) {
 	otherEmptyMc := canonicalizeEmptyMC(nil)
 	emptyMc.Spec.KernelArguments = nil
 	otherEmptyMc.Spec.KernelArguments = []string{}
-	diff = NewMachineConfigDiff(emptyMc, otherEmptyMc)
+	diff, err := NewMachineConfigDiff(emptyMc, otherEmptyMc)
 	assert.True(t, diff.IsEmpty())
 }
 
